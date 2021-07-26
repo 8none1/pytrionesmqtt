@@ -53,5 +53,5 @@ Based on Madhead's work and poking around we can reach the following conclusions
 
 ## Support this project
  - Contributions welcome
- - If you're going to buy some lights, use this affiliate link to the version I bought: https://amzn.to/2V7f2u6
+ - If you're going to buy some lights, use this affiliate link to the version I bought: https://amzn.to/2V7f2u6  I'm no Big Clive but I took the top of the power-supply-come-controller and it's pretty well made.  Nice seperation between the high voltage and low voltage side, and what looks like decent power supply circuitry.  
  - Test it and log bugs
