@@ -20,6 +20,7 @@ import json
 import sys
 
 debug = True # Prints messages to stdout. Once things are working set this to False
+mqtt_server = None
 mqtt_server_ip = "mqtt" # Change to the IP address of your MQTT server.  If you need an MQTT server, look at Mosquitto.
 mqtt_subscription_topic = "triones/control" # Where we will listen for messages to act on.
 mqtt_reporting_topic = "triones/status" # Where we will send status messages
@@ -67,7 +68,7 @@ SET_MODE             = bytearray.fromhex("BB 27 7F 44")
 def logger(message):
     if debug: print(message)
 
-def send_mqtt(value):
+def send_mqtt(mqtt_client,value):
     logger("MQTT: Sending value: %s to topic %s" % (value, mqtt_reporting_topic))
     mqtt_client.publish(mqtt_reporting_topic, value)
 
@@ -79,10 +80,13 @@ class ScanDelegate(DefaultDelegate):
             logger(f"Discovered device: {dev.addr}")
 
 class DataDelegate(DefaultDelegate):
-    def __init__(self):
+    def __init__(self,mqtt_client, mac):
         DefaultDelegate.__init__(self)
+        self.mqtt_client = mqtt_client
+        self.mac = mac
     
     def handleNotification(self, cHandle, data):
+        logger(f"Notification from device: {self.mac}")
         if cHandle == 12:
             # The protocol for my devices looks like 0x66,0x4,power,mode,0x20,speed,red,green,blue,white,0x3,0x99
             # This is a response to a status update
@@ -103,9 +107,9 @@ class DataDelegate(DefaultDelegate):
                 speed = int(data[5], base=16)
                 rgb   = [int(data[6], base=16), int(data[7], base=16), int(data[8], base=16)]
                 # white = data[9] # My LEDs dont have white
-                json_status = json.dumps({"power":power, "rgb":rgb, "speed": speed, "mode":mode})# json_status?  Wasn't he in Fast and Furious?
+                json_status = json.dumps({"mac":self.mac, "power":power, "rgb":rgb, "speed": speed, "mode":mode})# json_status?  Wasn't he in Fast and Furious?
                 logger(json_status)
-                send_mqtt(json_status)
+                send_mqtt(self.mqtt_client, json_status)
             else:
                 logger("Didn't understand the response data.")
         else:
@@ -122,23 +126,31 @@ def mqtt_message_received(client, userdata, message):
         # set power
         # set mode
         # set speed
+
         try:
-           json_request = json.loads(message.payload)
+            json_request = json.loads(message.payload)
+            mac = json_request["mac"]
+            logger(f"Received MQTT request for device: {mac}")
         except:
             logger("Failed to parse payload JSON.  Giving up")
             return False
 
         # Set up a connection to the device
-        trione = Peripheral(json_request["mac"]) # We might need to put a mutex around this, or some kind of queue
-        trione.withDelegate(DataDelegate())
-        characteristics = trione.getCharacteristics() # Some devices need you to ask them for their characteristics before you can use them
+        try:
+            trione = Peripheral(mac) # We might need to put a mutex around this, or some kind of queue
+        except BTLEDisconnectError:
+            logger(f"Failed to connect to device {mac}")
+            message = '{"mac": "'+mac+'", "connect": false}'
+            send_mqtt(client, message)
+            return False
+        trione.withDelegate(DataDelegate(client, mac))
         service = trione.getServiceByUUID(MAIN_SERVICE)
         characteristic = service.getCharacteristics(MAIN_CHARACTERISTIC)[0]
-        
         keys = json_request.keys()
         if "status" in keys:
+            logger(f"Requesting status from {mac}")
             characteristic.write(GET_STATUS)
-            trione.waitForNotifications(3)
+            trione.waitForNotifications(2)
         
         if "colour" in keys:
             r,g,b = json_request["colour"]
@@ -146,13 +158,14 @@ def mqtt_message_received(client, userdata, message):
             colour_message[1] = int(r)
             colour_message[2] = int(g)
             colour_message[3] = int(b)
+            logger(f"Setting colour to ({r},{g},{b}) on {mac}")
             characteristic.write(colour_message)
 
         if "power" in keys:
-            if json_request["power"] == True:
-                characteristic.write(SET_POWER_ON)
-            elif json_request["power"] == False:
-                characteristic.write(SET_POWER_OFF)
+            power = SET_POWER_OFF
+            power[1] = 35 if json_request["power"] == True else 34
+            logger(f"Setting power to {json_request['power']} on {mac}")
+            characteristic.write(SET_POWER_OFF)
 
         if "mode" in keys:
             # I guess you need to set a mode and a speed at the same time, and can't set one without the other?
@@ -162,7 +175,8 @@ def mqtt_message_received(client, userdata, message):
             if mode >= 37 and mode <= 56:
                 mode_message = SET_MODE
                 mode_message[1] = mode
-                mode_message[2] = speed      
+                mode_message[2] = speed
+                logger(f"Setting mode {mode} speed {speed} on {mac}")
                 characteristic.write(mode_message)
         
         trione.disconnect()
@@ -175,17 +189,14 @@ def find_devices():
     devices = scanner.scan(10.0)
 
     for dev in devices:
-        logger("Device %s, RSSI=%sdB" % (dev.addr, dev.rssi))
         for (adtype, desc, value) in dev.getScanData():
-            #print(f"desc: {desc}      value:  {value}")
             if desc == "Complete Local Name" and value.startswith("Triones:"):
-                triones[dev.rssi] = dev
-                logger("Found Triones device %s at address %s. RSSI %s" % (value, dev.addr, dev.rssi))
-
-    # We should now have a dict of Triones devices, let's sort by rssi and choose the one with the best connection
+                triones[dev.addr] = dev.rssi
     if len(triones) > 0:
-        triones = triones[sorted(triones.keys(), reverse=True)]
-        print("\n\n"+triones)
+        triones = dict(sorted(triones.items(), key=lambda item:item[1], reverse=True))
+        print("\n\n")
+        for key, value in triones.items():
+            print(f"Triones device - MAC address: {key}   RSSI: {value}")
     else:
         print("None found :(")
 
@@ -200,15 +211,27 @@ def server():
         mqtt_client.connect(mqtt_server_ip, 1883, 60)
     else:
         raise NameError("No MQTT Server configured")
+    
+    while True:
+        try:
+            mqtt_client.loop_forever()
+        except KeyboardInterrupt:
+            logger("Exiting...")
+            mqtt_client.disconnect()
+            raise
+        except BTLEDisconnectError:
+            logger("Device has gone away..")
+            send_mqtt(mqtt_client, '{"connect":"False"}')
+            raise
+            # I read something which suggests that these devices sometimes return data which is invalid
+            # and this causes BlueZ to choke. The upshot is that if this happens when we're trying to
+            # read status information no information will be returned, but then next time, two status
+            # messages get returned.  Maybe we could do a wait for messages as the first thing we do...
+            # might slow us down a bit, but :shrug: 
 
-    try:
-        mqtt_client.loop_forever()
-    except KeyboardInterrupt:
-        logger("Caught ctrl-c.  Disconnecting from device.")
-    except BTLEDisconnectError:
-        logger("Device has gone away..")
+if len(sys.argv) > 1 and sys.argv[1] == "--scan":
+        find_devices()
 
-if sys.argv[1] == "--scan":
-    find_devices()
 else:
+    logger("Running in server mode")
     server()
