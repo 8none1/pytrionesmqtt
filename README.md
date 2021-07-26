@@ -37,12 +37,12 @@ Based on Madhead's work and poking around we can reach the following conclusions
    - To change this, edit the code.  These are defined right up the top.
  - You will need to know the MAC address of your device.  There is a scanner class included which can help you find your devices.  Simply run: `TODO`
  - To get the status of your device send a JSON payload to the control topic:
-   - Send to `triones/control` the payload `{"mac":"aa:bb:cc:11:22:33", "status":"true"}`
+   - Send to `triones/control` the payload `{"mac":"aa:bb:cc:11:22:33", "status":true}`
    - Receive : `example TODO`
  - To set your lights to red:
    - Send to `triones/control` the payload `{"mac":"aa:bb:cc:11:22:33, "rgb": [255,0,0]}`
  - To power on your lights:
-   - Send to `triones/control` the payload `{"mac":"aa:bb:cc:11:22:33, "power":"true"}`
+   - Send to `triones/control` the payload `{"mac":"aa:bb:cc:11:22:33, "power":true}`
 
 ## Things still to do
  - There is minimal validation on anything
