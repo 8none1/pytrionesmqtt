@@ -17,9 +17,9 @@ If you don't want to run this script as root you need to read: https://github.co
 from bluepy.btle import *
 import paho.mqtt.client as mqtt
 import json
+import sys
 
 debug = True # Prints messages to stdout. Once things are working set this to False
-
 mqtt_server_ip = "mqtt" # Change to the IP address of your MQTT server.  If you need an MQTT server, look at Mosquitto.
 mqtt_subscription_topic = "triones/control" # Where we will listen for messages to act on.
 mqtt_reporting_topic = "triones/status" # Where we will send status messages
@@ -67,9 +67,9 @@ SET_MODE             = bytearray.fromhex("BB 27 7F 44")
 def logger(message):
     if debug: print(message)
 
-def send_mqtt(topic, value):
-    logger("MQTT: Sending value: %s to topic %s" % (value, topic))
-    mqtt_client.publish(topic, value)
+def send_mqtt(value):
+    logger("MQTT: Sending value: %s to topic %s" % (value, mqtt_reporting_topic))
+    mqtt_client.publish(mqtt_reporting_topic, value)
 
 class ScanDelegate(DefaultDelegate):
     def __init__(self):
@@ -105,7 +105,7 @@ class DataDelegate(DefaultDelegate):
                 # white = data[9] # My LEDs dont have white
                 json_status = json.dumps({"power":power, "rgb":rgb, "speed": speed, "mode":mode})# json_status?  Wasn't he in Fast and Furious?
                 logger(json_status)
-                send_mqtt(mqtt_reporting_topic, json_status)
+                send_mqtt(json_status)
             else:
                 logger("Didn't understand the response data.")
         else:
@@ -184,26 +184,31 @@ def find_devices():
 
     # We should now have a dict of Triones devices, let's sort by rssi and choose the one with the best connection
     if len(triones) > 0:
-        triones = triones[sorted(triones.keys(), reverse=True)[0]].addr
-        logger("Using hwaddr %s" % triones)
-        return triones
+        triones = triones[sorted(triones.keys(), reverse=True)]
+        print("\n\n"+triones)
     else:
-        return None
+        print("None found :(")
 
 
 ## hwid = "78:82:a4:00:05:1e"
 
-if mqtt_server_ip is not None:
-    mqtt_client = mqtt.Client()
-    mqtt_client.on_connect = mqtt_on_connect
-    mqtt_client.on_message = mqtt_message_received
-    mqtt_client.connect(mqtt_server_ip, 1883, 60)
-else:
-    raise NameError("No MQTT Server configured")
+def server():
+    if mqtt_server_ip is not None:
+        mqtt_client = mqtt.Client()
+        mqtt_client.on_connect = mqtt_on_connect
+        mqtt_client.on_message = mqtt_message_received
+        mqtt_client.connect(mqtt_server_ip, 1883, 60)
+    else:
+        raise NameError("No MQTT Server configured")
 
-try:
-    mqtt_client.loop_forever()
-except KeyboardInterrupt:
-    logger("Caught ctrl-c.  Disconnecting from device.")
-except BTLEDisconnectError:
-    logger("Device has gone away..")
+    try:
+        mqtt_client.loop_forever()
+    except KeyboardInterrupt:
+        logger("Caught ctrl-c.  Disconnecting from device.")
+    except BTLEDisconnectError:
+        logger("Device has gone away..")
+
+if sys.argv[1] == "--scan":
+    find_devices()
+else:
+    server()
