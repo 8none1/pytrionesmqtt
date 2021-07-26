@@ -25,56 +25,49 @@ mqtt_subscription_topic = "triones/control" # Where we will listen for messages 
 mqtt_reporting_topic = "triones/status" # Where we will send status messages
 
 # Triones constants
+MAIN_SERVICE         = 0xFFD5 # Service which provides the characteristics 
+MAIN_CHARACTERISTIC  = 0xFFD9 # Where all our commeands go
 GET_STATUS           = bytearray.fromhex("EF 01 77")
 SET_POWER_ON         = bytearray.fromhex("CC 23 33")
 SET_POWER_OFF        = bytearray.fromhex("CC 24 33")
 SET_COLOUR_BASE      = bytearray.fromhex("56 ff ff ff 00 F0 AA")
-SET_STATIC_COL_RED   = bytearray.fromhex("56 ff 00 00 00 F0 AA")
-SET_STATIC_COL_GREEN = bytearray.fromhex("56 00 ff 00 00 F0 AA")
-SET_STATIC_COL_BLUE  = bytearray.fromhex("56 00 00 ff 00 F0 AA")
-SET_STATIC_COL_WHITE = bytearray.fromhex("56 00 00 00 FF 0F AA")
 SET_MODE             = bytearray.fromhex("BB 27 7F 44")
 #  MODE from MODES_DICT ---------------------^ 
 #  SPEED from 01 to FF ------------------------ ^ 
 
-MODES_DICT = {
-0x25: "Seven color cross fade",
-0x26: "Red gradual change",
-0x27: "Green gradual change",
-0x28: "Blue gradual change",
-0x29: "Yellow gradual change",
-0x2A: "Cyan gradual change",
-0x2B: "Purple gradual change",
-0x2C: "White gradual change",
-0x2D: "Red, Green cross fade",
-0x2E: "Red blue cross fade",
-0x2F: "Green blue cross fade",
-0x30: "Seven color stobe flash",
-0x31: "Red strobe flash",
-0x32: "Green strobe flash",
-0x33: "Blue strobe flash",
-0x34: "Yellow strobe flash",
-0x35: "Cyan strobe flash",
-0x36: "Purple strobe flash",
-0x37: "White strobe flash",
-0x38: "Seven color jumping change"
-}
-
-# Triones static service
-## It looks like everything goes to one address and replies all come from a single address
-## and the variation in services is just done in the payload.
-MAIN_SERVICE         = 0xFFD5 # Service which provides the characteristics 
-#MAIN_RESULT          = 0xFFD4 # Results of writes in payload from here
-
-# Triones static characteristics
-MAIN_CHARACTERISTIC   = 0xFFD9
+# Some other examples if you need them...
+#SET_STATIC_COL_RED   = bytearray.fromhex("56 ff 00 00 00 F0 AA")
+#SET_STATIC_COL_GREEN = bytearray.fromhex("56 00 ff 00 00 F0 AA")
+#SET_STATIC_COL_BLUE  = bytearray.fromhex("56 00 00 ff 00 F0 AA")
+#SET_STATIC_COL_WHITE = bytearray.fromhex("56 00 00 00 FF 0F AA")
+# MODES_DICT = {
+# 0x25: "Seven color cross fade",
+# 0x26: "Red gradual change",
+# 0x27: "Green gradual change",
+# 0x28: "Blue gradual change",
+# 0x29: "Yellow gradual change",
+# 0x2A: "Cyan gradual change",
+# 0x2B: "Purple gradual change",
+# 0x2C: "White gradual change",
+# 0x2D: "Red, Green cross fade",
+# 0x2E: "Red blue cross fade",
+# 0x2F: "Green blue cross fade",
+# 0x30: "Seven color stobe flash",
+# 0x31: "Red strobe flash",
+# 0x32: "Green strobe flash",
+# 0x33: "Blue strobe flash",
+# 0x34: "Yellow strobe flash",
+# 0x35: "Cyan strobe flash",
+# 0x36: "Purple strobe flash",
+# 0x37: "White strobe flash",
+# 0x38: "Seven color jumping change"
+# }
 
 
 def logger(message):
     if debug: print(message)
 
 def send_mqtt(topic, value):
-    # We should just send JSON objects, it'll make it easier
     logger("MQTT: Sending value: %s to topic %s" % (value, topic))
     mqtt_client.publish(topic, value)
 
@@ -83,13 +76,15 @@ class ScanDelegate(DefaultDelegate):
         DefaultDelegate.__init__(self)
     def handleDiscovery(self, dev, isNewDev, isNewData):
         if isNewDev:
-            logger("Discovered device %s" % (dev.addr))
+            logger(f"Discovered device: {dev.addr}")
 
 class DataDelegate(DefaultDelegate):
     def __init__(self):
         DefaultDelegate.__init__(self)
+    
     def handleNotification(self, cHandle, data):
         if cHandle == 12:
+            # The protocol for my devices looks like 0x66,0x4,power,mode,0x20,speed,red,green,blue,white,0x3,0x99
             # This is a response to a status update
             # Hex response looks like
             # Off (but red)
@@ -101,7 +96,6 @@ class DataDelegate(DefaultDelegate):
 
             data = [hex(x) for x in data]
             logger("Response received: "+str(data))
-            # The protocol for my devices looks like 0x66,0x4,power,mode,0x20,speed,red,green,blue,white,0x3,0x99
             if data[0] == "0x66" and data[1] == "0x4" and data[11] == "0x99":
                 # Probably what we're looking for
                 power = True if data[2] == 0x23 else False
@@ -109,8 +103,7 @@ class DataDelegate(DefaultDelegate):
                 speed = int(data[5], base=16)
                 rgb   = [int(data[6], base=16), int(data[7], base=16), int(data[8], base=16)]
                 # white = data[9] # My LEDs dont have white
-                json_status = {"power":power, "rgb":rgb, "speed": speed, "mode":mode}# json_status?  Wasn't he in Fast and Furious?
-                json_status = json.dumps(json_status)
+                json_status = json.dumps({"power":power, "rgb":rgb, "speed": speed, "mode":mode})# json_status?  Wasn't he in Fast and Furious?
                 logger(json_status)
                 send_mqtt(mqtt_reporting_topic, json_status)
             else:
@@ -136,9 +129,9 @@ def mqtt_message_received(client, userdata, message):
             return False
 
         # Set up a connection to the device
-        trione = Peripheral(json_request["mac"])
+        trione = Peripheral(json_request["mac"]) # We might need to put a mutex around this, or some kind of queue
         trione.withDelegate(DataDelegate())
-        characteristics = trione.getCharacteristics()
+        characteristics = trione.getCharacteristics() # Some devices need you to ask them for their characteristics before you can use them
         service = trione.getServiceByUUID(MAIN_SERVICE)
         characteristic = service.getCharacteristics(MAIN_CHARACTERISTIC)[0]
         
@@ -148,11 +141,7 @@ def mqtt_message_received(client, userdata, message):
             trione.waitForNotifications(3)
         
         if "colour" in keys:
-            r,g,b = json_request["colour"] # This needs to be a list of ints
-            print("red")
-            print(type(red))
-            print(r)
-            print("../..")
+            r,g,b = json_request["colour"]
             colour_message = SET_COLOUR_BASE
             colour_message[1] = int(r)
             colour_message[2] = int(g)
@@ -176,7 +165,6 @@ def mqtt_message_received(client, userdata, message):
                 mode_message[2] = speed      
                 characteristic.write(mode_message)
         
-
         trione.disconnect()
 
 
