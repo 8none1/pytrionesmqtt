@@ -30,7 +30,7 @@ Based on Madhead's work and poking around we can reach the following conclusions
 
 ## How to use it
  - Prerequisites
-   - bluepy https://github.com/IanHarvey/bluepy
+   - bluepy https://github.com/IanHarvey/bluepy (Install the version from the master branch, it has some important fixes to the helper c file which make everything better.)
    - paho-mqtt https://github.com/eclipse/paho.mqtt.python
  - Configure your MQTT server and topic information
    - The default subscription topic for controlling the lights is `triones/control` and the default reporting topic is `triones/status`.
