@@ -18,6 +18,7 @@ from bluepy.btle import *
 import paho.mqtt.client as mqtt
 import json
 import sys
+import math
 
 debug = True # Prints messages to stdout. Once things are working set this to False
 mqtt_server = None
@@ -67,6 +68,34 @@ SET_MODE             = bytearray.fromhex("BB 27 7F 44")
 
 def logger(message):
     if debug: print(message)
+
+
+def hsv_to_rgb(h, s, v):
+    # I am using the NodeRed node "node-red-contrib-amazon-echo" to expose Triones lights to Alexa by pretending to be Hue lights.
+    # The node works pretty well and allows you easy access to on/off, colours and brightness.
+    # But, I wasn't very happy with their HSL to RGB conversions, they seem to lose quite a lot of colour.  So here we are.
+    i = math.floor(h*6)
+    f = h*6 - i
+    p = v * (1-s)
+    q = v * (1-f*s)
+    t = v * (1-(1-f)*s)
+
+    r, g, b = [
+        (v, t, p),
+        (q, v, p),
+        (p, v, t),
+        (p, q, v),
+        (t, p, v),
+        (v, p, q),
+    ][int(i%6)]
+
+    return r, g, b
+
+def philips_hue_to_real_hue(hue):
+    return int(hue / 65535 * 365)
+
+def convert_philips_sv(bri):
+    return int(bri/254 * 100)
 
 def send_mqtt(mqtt_client,value):
     logger("MQTT: Sending value: %s to topic %s" % (value, mqtt_reporting_topic))
@@ -158,14 +187,26 @@ def mqtt_message_received(client, userdata, message):
             logger(f"Setting power to {json_request['power']} on {mac}")
             characteristic.write(power)
 
-        if "colour" in keys:
-            r,g,b = json_request["colour"]
+        if "rgb_colour" in keys:
+            r,g,b = json_request["rgb_colour"]
             colour_message = SET_COLOUR_BASE
             colour_message[1] = int(r)
             colour_message[2] = int(g)
             colour_message[3] = int(b)
             logger(f"Setting colour to ({r},{g},{b}) on {mac}")
             characteristic.write(colour_message)
+        
+        if "philips_hue" in keys and "philips_saturation" in keys and "philips_brightness" in keys:
+            h = philips_hue_to_real_hue(json_request["philips_hue"])
+            s = convert_philips_sv(json_request["philips_saturation"])
+            v = convert_philips_sv(json_request["philips_brightness"])
+            r,g,b = hsv_to_rgb(h,s,v)
+            colour_message = SET_COLOUR_BASE
+            colour_message[1] = int(r)
+            colour_message[2] = int(g)
+            colour_message[3] = int(b)
+
+
 
         if "mode" in keys:
             # I guess you need to set a mode and a speed at the same time, and can't set one without the other?
