@@ -169,14 +169,20 @@ def mqtt_message_received(client, userdata, message):
 
         if "rgb_colour" in keys:
             r,g,b = json_request["rgb_colour"]
+            if "percentage" in keys:
+                scale_factor = int(json_request["percentage"])/100
+            else:
+                scale_factor = 1
             colour_message = SET_COLOUR_BASE
-            colour_message[1] = int(r)
-            colour_message[2] = int(g)
-            colour_message[3] = int(b)
+            colour_message[1] = int(r * scale_factor)
+            colour_message[2] = int(g * scale_factor)
+            colour_message[3] = int(b * scale_factor)
             logger(f"Setting colour to ({r},{g},{b}) on {mac}")
             characteristic.write(colour_message)
         
         if "philips_hue" in keys and "philips_saturation" in keys and "philips_brightness" in keys:
+            # Turns out the colour conversion in the Node Red node was fine.  It's the lights that are the problem.
+            # I'll leave this here for now though
             logger("Doing Philips Hue style colours")
             h = philips_hue_to_real_hue(json_request["philips_hue"])
             s = convert_philips_sv(json_request["philips_saturation"])
