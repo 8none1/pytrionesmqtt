@@ -163,9 +163,9 @@ def mqtt_message_received(client, userdata, message):
 
         if "power" in keys:
             power = SET_POWER_OFF
-            power[1] = 35 if json_request["power"] == True else 34
+            power[1] = 23 if json_request["power"] == True else 24
             logger(f"Setting power to {json_request['power']} on {mac}")
-            characteristic.write(SET_POWER_OFF)
+            characteristic.write(power)
 
         if "mode" in keys:
             # I guess you need to set a mode and a speed at the same time, and can't set one without the other?
