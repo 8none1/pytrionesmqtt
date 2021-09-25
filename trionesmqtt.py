@@ -185,9 +185,9 @@ def mqtt_message_received(client, userdata, message):
             r,g,b = colorsys.hsv_to_rgb(h,s,v)
             logger(f"R: {r}  G:{g}  B:{b}")
             colour_message = SET_COLOUR_BASE
-            colour_message[1] = int(r)
-            colour_message[2] = int(g)
-            colour_message[3] = int(b)
+            colour_message[1] = int(r)*255
+            colour_message[2] = int(g)*255
+            colour_message[3] = int(b)*255
             characteristic.write(colour_message)
 
 
