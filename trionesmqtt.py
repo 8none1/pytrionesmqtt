@@ -123,9 +123,9 @@ def mqtt_message_received(client, userdata, message):
     if message.topic == mqtt_subscription_topic:
         # get status
         # set colour [rrr,ggg,bbb]
-        # set power
         # set mode
         # set speed
+        # set brightness.  Accept a brightness in, and then scale the rgb values accordingly?
 
         try:
             json_request = json.loads(message.payload)
@@ -152,6 +152,11 @@ def mqtt_message_received(client, userdata, message):
             characteristic.write(GET_STATUS)
             trione.waitForNotifications(2)
         
+        if "power" in keys:
+            power = SET_POWER_ON if json_request["power"] == True else SET_POWER_OFF
+            logger(f"Setting power to {json_request['power']} on {mac}")
+            characteristic.write(power)
+
         if "colour" in keys:
             r,g,b = json_request["colour"]
             colour_message = SET_COLOUR_BASE
@@ -160,12 +165,6 @@ def mqtt_message_received(client, userdata, message):
             colour_message[3] = int(b)
             logger(f"Setting colour to ({r},{g},{b}) on {mac}")
             characteristic.write(colour_message)
-
-        if "power" in keys:
-            power = SET_POWER_OFF
-            power[1] = 23 if json_request["power"] == True else 24
-            logger(f"Setting power to {json_request['power']} on {mac}")
-            characteristic.write(power)
 
         if "mode" in keys:
             # I guess you need to set a mode and a speed at the same time, and can't set one without the other?
