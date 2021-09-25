@@ -131,6 +131,7 @@ def mqtt_message_received(client, userdata, message):
             json_request = json.loads(message.payload)
             mac = json_request["mac"]
             logger(f"Received MQTT request for device: {mac}")
+            logger(json.dumps(json_request, indent=4, sort_keys=True))
         except:
             logger("Failed to parse payload JSON.  Giving up")
             return False
