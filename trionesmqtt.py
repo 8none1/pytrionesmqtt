@@ -18,7 +18,8 @@ from bluepy.btle import *
 import paho.mqtt.client as mqtt
 import json
 import sys
-import math
+import colorsys
+
 
 debug = True # Prints messages to stdout. Once things are working set this to False
 mqtt_server = None
@@ -68,28 +69,6 @@ SET_MODE             = bytearray.fromhex("BB 27 7F 44")
 
 def logger(message):
     if debug: print(message)
-
-
-def hsv_to_rgb(h, s, v):
-    # I am using the NodeRed node "node-red-contrib-amazon-echo" to expose Triones lights to Alexa by pretending to be Hue lights.
-    # The node works pretty well and allows you easy access to on/off, colours and brightness.
-    # But, I wasn't very happy with their HSL to RGB conversions, they seem to lose quite a lot of colour.  So here we are.
-    i = math.floor(h*6)
-    f = h*6 - i
-    p = v * (1-s)
-    q = v * (1-f*s)
-    t = v * (1-(1-f)*s)
-
-    r, g, b = [
-        (v, t, p),
-        (q, v, p),
-        (p, v, t),
-        (p, q, v),
-        (t, p, v),
-        (v, p, q),
-    ][int(i%6)]
-
-    return r, g, b
 
 def philips_hue_to_real_hue(hue):
     return int(hue / 65535 * 365)
@@ -202,7 +181,7 @@ def mqtt_message_received(client, userdata, message):
             s = convert_philips_sv(json_request["philips_saturation"])
             v = convert_philips_sv(json_request["philips_brightness"])
             logger(f"H:{h}  S:{s}  V:{v}")
-            r,g,b = hsv_to_rgb(h,s,v)
+            r,g,b = colorsys.hsv_to_rgb(h,s,v)
             logger(f"R: {r}  G:{g}  B:{b}")
             colour_message = SET_COLOUR_BASE
             colour_message[1] = int(r)
