@@ -71,10 +71,11 @@ def logger(message):
     if debug: print(message)
 
 def philips_hue_to_real_hue(hue):
-    return int(hue / 65535 * 365)
+    # Get to degrees
+    return hue / 65535
 
 def convert_philips_sv(bri):
-    return int(bri/254 * 100)
+    return bri/254
 
 def send_mqtt(mqtt_client,value):
     logger("MQTT: Sending value: %s to topic %s" % (value, mqtt_reporting_topic))
