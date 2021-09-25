@@ -197,15 +197,18 @@ def mqtt_message_received(client, userdata, message):
             characteristic.write(colour_message)
         
         if "philips_hue" in keys and "philips_saturation" in keys and "philips_brightness" in keys:
+            logger("Doing Philips Hue style colours")
             h = philips_hue_to_real_hue(json_request["philips_hue"])
             s = convert_philips_sv(json_request["philips_saturation"])
             v = convert_philips_sv(json_request["philips_brightness"])
+            logger(f"H:{h}  S:{s}  V:{v}")
             r,g,b = hsv_to_rgb(h,s,v)
+            logger(f"R: {r}  G:{g}  B:{b}")
             colour_message = SET_COLOUR_BASE
             colour_message[1] = int(r)
             colour_message[2] = int(g)
             colour_message[3] = int(b)
-
+            characteristic.write(colour_message)
 
 
         if "mode" in keys:
