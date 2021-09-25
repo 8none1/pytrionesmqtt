@@ -183,11 +183,14 @@ def mqtt_message_received(client, userdata, message):
             v = convert_philips_sv(json_request["philips_brightness"])
             logger(f"H:{h}  S:{s}  V:{v}")
             r,g,b = colorsys.hsv_to_rgb(h,s,v)
+            r = r * 255
+            g = g * 255
+            b = b * 255
             logger(f"R: {r}  G:{g}  B:{b}")
             colour_message = SET_COLOUR_BASE
-            colour_message[1] = int(r)*255
-            colour_message[2] = int(g)*255
-            colour_message[3] = int(b)*255
+            colour_message[1] = int(r)
+            colour_message[2] = int(g)
+            colour_message[3] = int(b)
             characteristic.write(colour_message)
 
 
