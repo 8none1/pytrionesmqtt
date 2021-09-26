@@ -111,7 +111,7 @@ class DataDelegate(DefaultDelegate):
             logger("Response received: "+str(data))
             if data[0] == "0x66" and data[1] == "0x4" and data[11] == "0x99":
                 # Probably what we're looking for
-                power = True if data[2] == 0x23 else False
+                power = True if data[2] == "0x23" else False
                 mode  = int(data[3], base=16)
                 speed = int(data[5], base=16)
                 rgb   = [int(data[6], base=16), int(data[7], base=16), int(data[8], base=16)]
