@@ -147,7 +147,7 @@ def mqtt_message_received(client, userdata, message):
 
         # Set up a connection to the device
         try:
-            trione = Peripheral(mac) # We might need to put a mutex around this, or some kind of queue
+            trione = Peripheral(mac, timeout=5) # We might need to put a mutex around this, or some kind of queue
         except BTLEDisconnectError:
             logger(f"Failed to connect to device {mac}")
             message = '{"mac": "'+mac+'", "connect": false}'
