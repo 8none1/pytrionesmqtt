@@ -29,7 +29,7 @@ mqtt_reporting_topic = "triones/status" # Where we will send status messages
 
 # Triones constants
 MAIN_SERVICE         = 0xFFD5 # Service which provides the characteristics 
-MAIN_CHARACTERISTIC  = 0xFFD9 # Where all our commeands go
+MAIN_CHARACTERISTIC  = 0xFFD9 # Where all our commands go
 GET_STATUS           = bytearray.fromhex("EF 01 77")
 SET_POWER_ON         = bytearray.fromhex("CC 23 33")
 SET_POWER_OFF        = bytearray.fromhex("CC 24 33")
@@ -131,10 +131,8 @@ def mqtt_on_connect(client, userdata, flags, rc):
 def mqtt_message_received(client, userdata, message):
     if message.topic == mqtt_subscription_topic:
         # get status
-        # set colour [rrr,ggg,bbb]
         # set mode
         # set speed
-        # set brightness.  Accept a brightness in, and then scale the rgb values accordingly?
 
         try:
             json_request = json.loads(message.payload)
@@ -147,7 +145,7 @@ def mqtt_message_received(client, userdata, message):
 
         # Set up a connection to the device
         try:
-            trione = Peripheral(mac, timeout=5) # We might need to put a mutex around this, or some kind of queue
+            trione = Peripheral(mac, timeout=5)
         except BTLEDisconnectError:
             logger(f"Failed to connect to device {mac}")
             message = '{"mac": "'+mac+'", "connect": false}'
@@ -233,8 +231,6 @@ def find_devices():
     else:
         print("None found :(")
 
-
-## hwid = "78:82:a4:00:05:1e"
 
 def server():
     if mqtt_server_ip is not None:
