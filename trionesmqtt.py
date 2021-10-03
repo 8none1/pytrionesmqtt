@@ -251,6 +251,7 @@ def server(run_mode=None):
     # run_mode "worker" tells us that we are part of a collective not stand-alone.
     if run_mode == "worker":
         hostname = platform.node()
+        global mqtt_subscription_topic
         mqtt_controller_topic = mqtt_subscription_topic
         mqtt_subscription_topic = (mqtt_subscription_topic+'/'+hostname,0)
     
