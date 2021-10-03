@@ -21,7 +21,7 @@ WORKERS = []
 logger = logging.getLogger(__name__)
 
 def mqtt_on_connect(client, userdata, flags, rc):
-    logger(f"MQTT Connected, subscribing to {mqtt_subscription_topic}")
+    logger.info(f"MQTT Connected, subscribing to {mqtt_subscription_topic}")
     client.subscribe(mqtt_subscription_topic)
 
 #def send_mqtt(mqtt_client,value):
@@ -36,28 +36,28 @@ def mqtt_message_received(client, userdata, message):
         
         try:
             json_request = json.loads(message.payload)
-            logger("MQTT message received. Trying to parse payload...")
-            logger(json.dumps(json_request, indent=4, sort_keys=True))
+            logger.info("MQTT message received. Trying to parse payload...")
+            logger.info(json.dumps(json_request, indent=4, sort_keys=True))
 
             if "mac" in json_request.keys():
                 mac = json_request["mac"]
-                logger(f"Received Triones request for device: {mac}")
+                logger.info(f"Received Triones request for device: {mac}")
                 # Need to do more actual work in here.
             elif "register" in json_request.keys():
                 worker_hostname = json_request["hostname"]
-                logger(f"Received registration request from {worker_hostname}.")
+                logger.info(f"Received registration request from {worker_hostname}.")
                 if worker_hostname not in WORKERS:
                     logger(f"Adding {worker_hostname} to list of workers.")
                     WORKERS.append(worker_hostname)
                     payload = json.dumps({"ack":True})
-                    logger(f"Sending ack to {worker_hostname}.")
+                    logger.info(f"Sending ack to {worker_hostname}.")
                     client.publish(mqtt_subscription_topic+"/"+worker_hostname,payload)
                     client.loop_write()
             else:
-                logger("Received unhandled request.  Doing nothing.")
+                logger.info("Received unhandled request.  Doing nothing.")
                 return False
         except:
-            logger("Failed to parse payload JSON.  Giving up")
+            logger.info("Failed to parse payload JSON.  Giving up")
             return False
 
 
