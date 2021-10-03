@@ -19,13 +19,17 @@ import paho.mqtt.client as mqtt
 import json
 import sys
 import colorsys
-
+import platform
+import time
 
 debug = True # Prints messages to stdout. Once things are working set this to False
 mqtt_server = None
 mqtt_server_ip = "mqtt" # Change to the IP address of your MQTT server.  If you need an MQTT server, look at Mosquitto.
-mqtt_subscription_topic = "triones/control" # Where we will listen for messages to act on.
+mqtt_subscription_topic = [("triones/control",0)] # Where we will listen for messages to act on.
 mqtt_reporting_topic = "triones/status" # Where we will send status messages
+
+# client/server status tracking.  There is probably a better way, but this will do for now
+worker_registered = False
 
 # Triones constants
 MAIN_SERVICE         = 0xFFD5 # Service which provides the characteristics 
@@ -77,10 +81,6 @@ def philips_hue_to_real_hue(hue):
 def convert_philips_sv(bri):
     return bri/254
 
-def send_mqtt(mqtt_client,value):
-    logger("MQTT: Sending value: %s to topic %s" % (value, mqtt_reporting_topic))
-    mqtt_client.publish(mqtt_reporting_topic, value)
-
 class ScanDelegate(DefaultDelegate):
     def __init__(self):
         DefaultDelegate.__init__(self)
@@ -128,17 +128,30 @@ def mqtt_on_connect(client, userdata, flags, rc):
     logger("MQTT Connected")
     client.subscribe(mqtt_subscription_topic)
 
+def send_mqtt(mqtt_client,value):
+    logger("MQTT: Sending value: %s to topic %s" % (value, mqtt_reporting_topic))
+    mqtt_client.publish(mqtt_reporting_topic, value)
+
 def mqtt_message_received(client, userdata, message):
     if message.topic == mqtt_subscription_topic:
         # get status
         # set mode
         # set speed
-
+        
         try:
             json_request = json.loads(message.payload)
-            mac = json_request["mac"]
-            logger(f"Received MQTT request for device: {mac}")
             logger(json.dumps(json_request, indent=4, sort_keys=True))
+
+            if "mac" in json_request.keys():
+                mac = json_request["mac"]
+                logger(f"Received Triones request for device: {mac}")
+            elif "ack" in json_request.keys():
+                logger("Received ack from server.")
+                worker_registered = True
+                return True
+            else:
+                logger("Received unhandled request.  Doing nothing.")
+                return False
         except:
             logger("Failed to parse payload JSON.  Giving up")
             return False
@@ -232,7 +245,14 @@ def find_devices():
         print("None found :(")
 
 
-def server():
+def server(run_mode=None):
+    # On reflection using the word "server" here was wrong.  Oh well.
+    # run_mode "worker" tells us that we are part of a collective not stand-alone.
+    if run_mode == "worker":
+        hostname = platform.node()
+        mqtt_controller_topic = mqtt_subscription_topic
+        mqtt_subscription_topic = (mqtt_subscription_topic+'/'+hostname,0)
+    
     if mqtt_server_ip is not None:
         mqtt_client = mqtt.Client()
         mqtt_client.on_connect = mqtt_on_connect
@@ -241,6 +261,25 @@ def server():
     else:
         raise NameError("No MQTT Server configured")
     
+    if run_mode == "worker":
+        # We are now connected to MQTT so we can tell everyone we're ready for work.
+        logger("In worker mode, so need to clock on:")
+        loop = 1
+        while worker_registered == False:
+            logger(f"Trying to register with server [{loop}/10]")
+            payload = json.dumps({"register":True, "hostname":hostname})
+            logger("Sending registration message")
+            mqtt_client.publish(mqtt_controller_topic, payload)
+            mqtt_client.loop_write()
+            time.sleep(1)
+            mqtt_client.loop_read()
+            loop += 1
+            if loop > 11:
+                raise NameError("Failed to talk to server. Giving up.  Maybe try again later?")
+            time.sleep(5)
+        logger("Exited registration loop.  I should be registered now.")
+
+
     while True:
         try:
             mqtt_client.loop_forever()
@@ -260,7 +299,10 @@ def server():
 
 if len(sys.argv) > 1 and sys.argv[1] == "--scan":
         find_devices()
-
+if len(sys.argv) > 1 and sys.argv[1] == "--worker":
+    # Run with `--worker` to run as a distributed worker to a main controller
+    logger("Running in worker mode")
+    server(run_mode="worker")
 else:
     logger("Running in server mode")
     server()
