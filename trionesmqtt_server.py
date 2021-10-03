@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 mqtt_server = None
 mqtt_server_ip = "mqtt" # Change to the IP address of your MQTT server.  If you need an MQTT server, look at Mosquitto.
-mqtt_subscription_topic = [("triones/control",0)] # Where we will listen for messages to act on.
+mqtt_subscription_topic = "triones/control" # Where we will listen for messages to act on.
 mqtt_reporting_topic = "triones/status" # Where we will send status messages
 
 WORKERS = []
@@ -42,7 +42,7 @@ def mqtt_message_received(client, userdata, message):
                 worker_hostname = json_request["hostname"]
                 logging.info(f"Received registration request from {worker_hostname}.")
                 if worker_hostname not in WORKERS:
-                    logging(f"Adding {worker_hostname} to list of workers.")
+                    logging.info(f"Adding {worker_hostname} to list of workers.")
                     WORKERS.append(worker_hostname)
                     payload = json.dumps({"ack":True})
                     logging.info(f"Sending ack to {worker_hostname}.")

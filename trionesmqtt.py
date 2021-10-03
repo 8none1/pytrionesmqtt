@@ -25,7 +25,7 @@ import time
 debug = True # Prints messages to stdout. Once things are working set this to False
 mqtt_server = None
 mqtt_server_ip = "mqtt" # Change to the IP address of your MQTT server.  If you need an MQTT server, look at Mosquitto.
-mqtt_subscription_topic = [("triones/control",0)] # Where we will listen for messages to act on.
+mqtt_subscription_topic = "triones/control" # Where we will listen for messages to act on.
 mqtt_reporting_topic = "triones/status" # Where we will send status messages
 
 # client/server status tracking.  There is probably a better way, but this will do for now
@@ -147,6 +147,7 @@ def mqtt_message_received(client, userdata, message):
                 logger(f"Received Triones request for device: {mac}")
             elif "ack" in json_request.keys():
                 logger("Received ack from server.")
+                global worker_registered
                 worker_registered = True
                 return True
             else:
@@ -264,18 +265,22 @@ def server(run_mode=None):
     if run_mode == "worker":
         # We are now connected to MQTT so we can tell everyone we're ready for work.
         logger("In worker mode, so need to clock on:")
-        loop = 1
-        while worker_registered == False:
-            logger(f"Trying to register with server [{loop}/10]")
+        loop = 0
+        global worker_registered
+        while True:
+            mqtt_client.loop()
+            logger(f"Trying to register with server...")
             payload = json.dumps({"register":True, "hostname":hostname})
             logger("Sending registration message")
             mqtt_client.publish(mqtt_controller_topic, payload)
-            mqtt_client.loop_write()
-            time.sleep(1)
-            mqtt_client.loop_read()
+            mqtt_client.loop()
             loop += 1
             if loop > 11:
                 raise NameError("Failed to talk to server. Giving up.  Maybe try again later?")
+            mqtt_client.loop()
+            if worker_registered == True:
+                logger("Have registered")
+                break
             time.sleep(5)
         logger("Exited registration loop.  I should be registered now.")
 
