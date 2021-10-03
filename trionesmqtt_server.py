@@ -3,10 +3,6 @@
 import paho.mqtt.client as mqtt
 import json
 import logging
-import sys
-import colorsys
-import platform
-import time
 
 
 # This is just the server.  It listens to MQTT and then sends messages out to the registered workers to ask them to do the work.
@@ -18,7 +14,7 @@ mqtt_reporting_topic = "triones/status" # Where we will send status messages
 
 WORKERS = []
 
-logger = logging.getLogger(__name__)
+logger = logging
 
 def mqtt_on_connect(client, userdata, flags, rc):
     logger.info(f"MQTT Connected, subscribing to {mqtt_subscription_topic}")
