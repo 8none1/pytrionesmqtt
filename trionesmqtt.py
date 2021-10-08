@@ -21,6 +21,8 @@ import sys
 import colorsys
 import platform
 import time
+import logging
+import os
 
 debug = True # Prints messages to stdout. Once things are working set this to False
 mqtt_server = None
@@ -73,13 +75,6 @@ SET_MODE             = bytearray.fromhex("BB 27 7F 44")
 
 def logger(message):
     if debug: print(message)
-
-def philips_hue_to_real_hue(hue):
-    # Get to degrees
-    return hue / 65535
-
-def convert_philips_sv(bri):
-    return bri/254
 
 class ScanDelegate(DefaultDelegate):
     def __init__(self):
@@ -140,11 +135,11 @@ def mqtt_message_received(client, userdata, message):
         
         try:
             json_request = json.loads(message.payload)
-            logger(json.dumps(json_request, indent=4, sort_keys=True))
 
             if "mac" in json_request.keys():
                 mac = json_request["mac"]
-                logger(f"Received Triones request for device: {mac}")
+                logger(f"{mac}    Received Triones request for device")
+                logger(json.dumps(json_request, indent=4, sort_keys=True))
             elif "ack" in json_request.keys():
                 logger("Received ack from server.")
                 global worker_registered
@@ -158,25 +153,44 @@ def mqtt_message_received(client, userdata, message):
             return False
 
         # Set up a connection to the device
-        try:
-            trione = Peripheral(mac, timeout=5)
-        except BTLEDisconnectError:
-            logger(f"Failed to connect to device {mac}")
+        # These devices seem really picky, so let's try to connect 3 times before we give up.
+        # It seems that they either connect straight away, or not at all. 
+        connected = False
+        for a in range(10):
+            # These lights are super flaky. It seems hard to get a connection a lot of the time.
+            # Some of this is, I expect, because they return invalid error codes which BlueZ
+            # doesn't deal with.  
+            # https://github.com/Depau/consmart-ble-mqtt/blob/master/0001-Workaround-for-non-compliant-BLE-lights.patch
+            # I've tried to build BlueZ on a Pi from the deb source, but it doesn't compile (!!) So I gave up and just
+            # retry a bunch of times.  This is annoying but, meh, whatdyagonnado?
+            print(f"{mac}    Connect attempt {a+1}/10")
+            try:
+                trione = Peripheral(mac, timeout=5)
+                connected = True
+                logger(f"{mac}    Connected!")
+                break
+            except BTLEDisconnectError:
+                logger(f"{mac}    Failed to connect to device.")
+                time.sleep(2)
+        if connected == False:
+            # We tried, but it ain't happening.
+            logger(f"{mac}    Unable to connect.  Giving up.")
             message = '{"mac": "'+mac+'", "connect": false}'
             send_mqtt(client, message)
             return False
+        # If we get here, it should be connected.  But not for long, the life span of a connection seems very short.
         trione.withDelegate(DataDelegate(client, mac))
         service = trione.getServiceByUUID(MAIN_SERVICE)
         characteristic = service.getCharacteristics(MAIN_CHARACTERISTIC)[0]
         keys = json_request.keys()
         if "status" in keys:
-            logger(f"Requesting status from {mac}")
+            logger(f"{mac}    Requesting status")
             characteristic.write(GET_STATUS)
             trione.waitForNotifications(2)
         
         if "power" in keys:
             power = SET_POWER_ON if json_request["power"] == True else SET_POWER_OFF
-            logger(f"Setting power to {json_request['power']} on {mac}")
+            logger(f"{mac}    Setting power to {json_request['power']}")
             characteristic.write(power)
 
         if "rgb_colour" in keys:
@@ -189,29 +203,9 @@ def mqtt_message_received(client, userdata, message):
             colour_message[1] = int(r * scale_factor)
             colour_message[2] = int(g * scale_factor)
             colour_message[3] = int(b * scale_factor)
-            logger(f"Setting colour to ({r},{g},{b}) on {mac}")
+            logger(f"{mac}    Setting colour to ({r},{g},{b})")
             characteristic.write(colour_message)
         
-        if "philips_hue" in keys and "philips_saturation" in keys and "philips_brightness" in keys:
-            # Turns out the colour conversion in the Node Red node was fine.  It's the lights that are the problem.
-            # I'll leave this here for now though
-            logger("Doing Philips Hue style colours")
-            h = philips_hue_to_real_hue(json_request["philips_hue"])
-            s = convert_philips_sv(json_request["philips_saturation"])
-            v = convert_philips_sv(json_request["philips_brightness"])
-            logger(f"H:{h}  S:{s}  V:{v}")
-            r,g,b = colorsys.hsv_to_rgb(h,s,v)
-            r = r * 255
-            g = g * 255
-            b = b * 255
-            logger(f"R: {r}  G:{g}  B:{b}")
-            colour_message = SET_COLOUR_BASE
-            colour_message[1] = int(r)
-            colour_message[2] = int(g)
-            colour_message[3] = int(b)
-            characteristic.write(colour_message)
-
-
         if "mode" in keys:
             # I guess you need to set a mode and a speed at the same time, and can't set one without the other?
             # Haven't done any testing on that.
@@ -221,9 +215,9 @@ def mqtt_message_received(client, userdata, message):
                 mode_message = SET_MODE
                 mode_message[1] = mode
                 mode_message[2] = speed
-                logger(f"Setting mode {mode} speed {speed} on {mac}")
+                logger(f"{mac}    Setting mode {mode} speed {speed}")
                 characteristic.write(mode_message)
-        
+        logger(f"{mac}    Completed conversation with device.  Disconnecting.\n\n\n")
         trione.disconnect()
 
 
@@ -250,10 +244,12 @@ def server(run_mode=None):
     # On reflection using the word "server" here was wrong.  Oh well.
     # run_mode "worker" tells us that we are part of a collective not stand-alone.
     if run_mode == "worker":
-        hostname = platform.node()
         global mqtt_subscription_topic
+        hostname = platform.node()
+        logger(f"Setting controller topic to: {mqtt_subscription_topic}")
         mqtt_controller_topic = mqtt_subscription_topic
-        mqtt_subscription_topic = (mqtt_subscription_topic+'/'+hostname,0)
+        mqtt_subscription_topic = mqtt_subscription_topic+'/'+hostname
+        logger(f"Set sub topic to: {mqtt_subscription_topic}")
     
     if mqtt_server_ip is not None:
         mqtt_client = mqtt.Client()
@@ -265,26 +261,23 @@ def server(run_mode=None):
     
     if run_mode == "worker":
         # We are now connected to MQTT so we can tell everyone we're ready for work.
+        global worker_registered
         logger("In worker mode, so need to clock on:")
         loop = 0
-        global worker_registered
         while True:
             mqtt_client.loop()
             logger(f"Trying to register with server...")
             payload = json.dumps({"register":True, "hostname":hostname})
-            logger("Sending registration message")
             mqtt_client.publish(mqtt_controller_topic, payload)
             mqtt_client.loop()
-            loop += 1
-            if loop > 11:
+            if loop > 10:
                 raise NameError("Failed to talk to server. Giving up.  Maybe try again later?")
-            mqtt_client.loop()
+            else:
+                loop += 1
             if worker_registered == True:
-                logger("Have registered")
+                logger("Have successfully registered.")
                 break
-            time.sleep(5)
-        logger("Exited registration loop.  I should be registered now.")
-
+            time.sleep(2)
 
     while True:
         try:
@@ -295,7 +288,7 @@ def server(run_mode=None):
             raise
         except BTLEDisconnectError:
             logger("Device has gone away..")
-            send_mqtt(mqtt_client, '{"connect":"False"}')
+            #send_mqtt(mqtt_client, '{"connect":"False"}')
             raise
             # I read something which suggests that these devices sometimes return data which is invalid
             # and this causes BlueZ to choke. The upshot is that if this happens when we're trying to
@@ -305,10 +298,11 @@ def server(run_mode=None):
 
 if len(sys.argv) > 1 and sys.argv[1] == "--scan":
         find_devices()
+        sys.exit(0)
 if len(sys.argv) > 1 and sys.argv[1] == "--worker":
     # Run with `--worker` to run as a distributed worker to a main controller
     logger("Running in worker mode")
     server(run_mode="worker")
 else:
-    logger("Running in server mode")
+    logger("Running in stand-alone server mode")
     server()
