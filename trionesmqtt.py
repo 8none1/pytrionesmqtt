@@ -38,7 +38,7 @@ SET_POWER_OFF        = bytearray.fromhex("CC 24 33")
 SET_COLOUR_BASE      = bytearray.fromhex("56 ff ff ff 00 F0 AA")
 SET_MODE             = bytearray.fromhex("BB 27 7F 44")
 #  MODE from MODES_DICT ---------------------^ 
-#  SPEED from 01 to FF ------------------------ ^ 
+#  SPEED from 01 to FF ------------------------ ^ HIGHER IS SLOWER!
 
 # Some other examples if you need them...
 #SET_STATIC_COL_RED   = bytearray.fromhex("56 ff 00 00 00 F0 AA")
@@ -46,26 +46,26 @@ SET_MODE             = bytearray.fromhex("BB 27 7F 44")
 #SET_STATIC_COL_BLUE  = bytearray.fromhex("56 00 00 ff 00 F0 AA")
 #SET_STATIC_COL_WHITE = bytearray.fromhex("56 00 00 00 FF 0F AA")
 # MODES_DICT = {
-# 0x25: "Seven color cross fade",
-# 0x26: "Red gradual change",
-# 0x27: "Green gradual change",
-# 0x28: "Blue gradual change",
-# 0x29: "Yellow gradual change",
-# 0x2A: "Cyan gradual change",
-# 0x2B: "Purple gradual change",
-# 0x2C: "White gradual change",
-# 0x2D: "Red, Green cross fade",
-# 0x2E: "Red blue cross fade",
-# 0x2F: "Green blue cross fade",
-# 0x30: "Seven color stobe flash",
-# 0x31: "Red strobe flash",
-# 0x32: "Green strobe flash",
-# 0x33: "Blue strobe flash",
-# 0x34: "Yellow strobe flash",
-# 0x35: "Cyan strobe flash",
-# 0x36: "Purple strobe flash",
-# 0x37: "White strobe flash",
-# 0x38: "Seven color jumping change"
+# 37 : 0x25: "Seven color cross fade",
+# 38 : 0x26: "Red gradual change",
+# 39 : 0x27: "Green gradual change",
+# 40 : 0x28: "Blue gradual change",
+# 41 : 0x29: "Yellow gradual change",
+# 42 : 0x2A: "Cyan gradual change",
+# 43 : 0x2B: "Purple gradual change",
+# 44 : 0x2C: "White gradual change",
+# 45 : 0x2D: "Red, Green cross fade",
+# 46 : 0x2E: "Red blue cross fade",
+# 47 : 0x2F: "Green blue cross fade",
+# 48 : 0x30: "Seven color strobe flash",
+# 49 : 0x31: "Red strobe flash",
+# 50 : 0x32: "Green strobe flash",
+# 51 : 0x33: "Blue strobe flash",
+# 52 : 0x34: "Yellow strobe flash",
+# 53 : 0x35: "Cyan strobe flash",
+# 54 : 0x36: "Purple strobe flash",
+# 55 : 0x37: "White strobe flash",
+# 56 : 0x38: "Seven color jumping change"
 # }
 
 
@@ -125,13 +125,8 @@ def send_mqtt(mqtt_client,value):
 
 def mqtt_message_received(client, userdata, message):
     if message.topic == mqtt_subscription_topic:
-        # get status
-        # set mode
-        # set speed
-        
         try:
             json_request = json.loads(message.payload)
-
             if "mac" in json_request.keys():
                 mac = json_request["mac"]
                 logger(f"{mac}    Received Triones request for device")
@@ -153,8 +148,8 @@ def mqtt_message_received(client, userdata, message):
             # https://github.com/Depau/consmart-ble-mqtt/blob/master/0001-Workaround-for-non-compliant-BLE-lights.patch
             # Update: I built a patched Bluez, didn't help.
             
-            print(f"{mac}    Connect attempt {a+1}/10")
-            time.sleep(random.randint(1,5)) # Offset ourselves from any other instances running
+            logger(f"{mac}    Connect attempt {a+1}/10")
+            time.sleep(round(random.uniform(1,3),2)) # Offset ourselves from any other instances running
             try:
                 trione = Peripheral(mac, timeout=5)
                 connected = True
@@ -162,8 +157,7 @@ def mqtt_message_received(client, userdata, message):
                 break
             except BTLEDisconnectError:
                 logger(f"{mac}    Failed to connect to device.")
-
-                time.sleep(random.randint(1,3))
+                time.sleep(round(random.uniform(1,2),2))
         if connected == False:
             # We tried, but it ain't happening.
             logger(f"{mac}    Unable to connect.  Giving up.")
