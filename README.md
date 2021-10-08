@@ -29,10 +29,11 @@ Based on Madhead's work and poking around we can reach the following conclusions
  - Expects and produces JSON formatted payloads
 
 ## How to use it
- - Prerequisites
-   - bluepy https://github.com/IanHarvey/bluepy (Install the version from the master branch, it has some important fixes to the helper c file which make everything better.)
-   - `python3 -m pip install git+https://github.com/IanHarvey/bluepy.git`
-   - paho-mqtt https://github.com/eclipse/paho.mqtt.python
+  - Prerequisites
+    - bluepy https://github.com/IanHarvey/bluepy (Install the version from the master branch, it has some important fixes to the helper c file which make everything better.)
+      - `python3 -m pip install git+https://github.com/IanHarvey/bluepy.git`
+    - paho-mqtt
+      - `python3 -m pip install paho-mqtt`
  - Configure your MQTT server and topic information
    - The default subscription topic for controlling the lights is `triones/control` and the default reporting topic is `triones/status`.
    - To change this, edit the code.  These are defined right up the top.
