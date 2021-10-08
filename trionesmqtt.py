@@ -18,11 +18,9 @@ from bluepy.btle import *
 import paho.mqtt.client as mqtt
 import json
 import sys
-import colorsys
-import platform
 import time
-import logging
-import os
+import random
+
 
 debug = True # Prints messages to stdout. Once things are working set this to False
 mqtt_server = None
@@ -30,8 +28,6 @@ mqtt_server_ip = "mqtt" # Change to the IP address of your MQTT server.  If you 
 mqtt_subscription_topic = "triones/control" # Where we will listen for messages to act on.
 mqtt_reporting_topic = "triones/status" # Where we will send status messages
 
-# client/server status tracking.  There is probably a better way, but this will do for now
-worker_registered = False
 
 # Triones constants
 MAIN_SERVICE         = 0xFFD5 # Service which provides the characteristics 
@@ -140,11 +136,6 @@ def mqtt_message_received(client, userdata, message):
                 mac = json_request["mac"]
                 logger(f"{mac}    Received Triones request for device")
                 logger(json.dumps(json_request, indent=4, sort_keys=True))
-            elif "ack" in json_request.keys():
-                logger("Received ack from server.")
-                global worker_registered
-                worker_registered = True
-                return True
             else:
                 logger("Received unhandled request.  Doing nothing.")
                 return False
@@ -153,17 +144,17 @@ def mqtt_message_received(client, userdata, message):
             return False
 
         # Set up a connection to the device
-        # These devices seem really picky, so let's try to connect 3 times before we give up.
-        # It seems that they either connect straight away, or not at all. 
+        # These devices seem really picky, they either connect straight away, or not at all. 
         connected = False
         for a in range(10):
             # These lights are super flaky. It seems hard to get a connection a lot of the time.
             # Some of this is, I expect, because they return invalid error codes which BlueZ
             # doesn't deal with.  
             # https://github.com/Depau/consmart-ble-mqtt/blob/master/0001-Workaround-for-non-compliant-BLE-lights.patch
-            # I've tried to build BlueZ on a Pi from the deb source, but it doesn't compile (!!) So I gave up and just
-            # retry a bunch of times.  This is annoying but, meh, whatdyagonnado?
+            # Update: I built a patched Bluez, didn't help.
+            
             print(f"{mac}    Connect attempt {a+1}/10")
+            time.sleep(random.randint(1,5)) # Offset ourselves from any other instances running
             try:
                 trione = Peripheral(mac, timeout=5)
                 connected = True
@@ -171,7 +162,8 @@ def mqtt_message_received(client, userdata, message):
                 break
             except BTLEDisconnectError:
                 logger(f"{mac}    Failed to connect to device.")
-                time.sleep(2)
+
+                time.sleep(random.randint(1,3))
         if connected == False:
             # We tried, but it ain't happening.
             logger(f"{mac}    Unable to connect.  Giving up.")
@@ -241,16 +233,7 @@ def find_devices():
 
 
 def server(run_mode=None):
-    # On reflection using the word "server" here was wrong.  Oh well.
-    # run_mode "worker" tells us that we are part of a collective not stand-alone.
-    if run_mode == "worker":
-        global mqtt_subscription_topic
-        hostname = platform.node()
-        logger(f"Setting controller topic to: {mqtt_subscription_topic}")
-        mqtt_controller_topic = mqtt_subscription_topic
-        mqtt_subscription_topic = mqtt_subscription_topic+'/'+hostname
-        logger(f"Set sub topic to: {mqtt_subscription_topic}")
-    
+   
     if mqtt_server_ip is not None:
         mqtt_client = mqtt.Client()
         mqtt_client.on_connect = mqtt_on_connect
@@ -259,26 +242,6 @@ def server(run_mode=None):
     else:
         raise NameError("No MQTT Server configured")
     
-    if run_mode == "worker":
-        # We are now connected to MQTT so we can tell everyone we're ready for work.
-        global worker_registered
-        logger("In worker mode, so need to clock on:")
-        loop = 0
-        while True:
-            mqtt_client.loop()
-            logger(f"Trying to register with server...")
-            payload = json.dumps({"register":True, "hostname":hostname})
-            mqtt_client.publish(mqtt_controller_topic, payload)
-            mqtt_client.loop()
-            if loop > 10:
-                raise NameError("Failed to talk to server. Giving up.  Maybe try again later?")
-            else:
-                loop += 1
-            if worker_registered == True:
-                logger("Have successfully registered.")
-                break
-            time.sleep(2)
-
     while True:
         try:
             mqtt_client.loop_forever()
@@ -288,21 +251,25 @@ def server(run_mode=None):
             raise
         except BTLEDisconnectError:
             logger("Device has gone away..")
-            #send_mqtt(mqtt_client, '{"connect":"False"}')
-            raise
+            send_mqtt(mqtt_client, '{"connect":"False"}')
+
+            #raise
             # I read something which suggests that these devices sometimes return data which is invalid
             # and this causes BlueZ to choke. The upshot is that if this happens when we're trying to
             # read status information no information will be returned, but then next time, two status
             # messages get returned.  Maybe we could do a wait for messages as the first thing we do...
             # might slow us down a bit, but :shrug: 
+            # I tried to patch the version of Bluez on the Pi to work around this.  First off, Bluez on the pi
+            # doesn't build successfully from the source packages!  But once I found a patch for that, I also
+            # applied the patch to fix this as well.  There are some debs in a tarball in the repo if you want
+            # to test it.  It made little difference in my tests.  All things considered, these lights are crap.
+            # But cheap!
+
 
 if len(sys.argv) > 1 and sys.argv[1] == "--scan":
         find_devices()
         sys.exit(0)
-if len(sys.argv) > 1 and sys.argv[1] == "--worker":
-    # Run with `--worker` to run as a distributed worker to a main controller
-    logger("Running in worker mode")
-    server(run_mode="worker")
+
 else:
     logger("Running in stand-alone server mode")
     server()
