@@ -131,7 +131,7 @@ def mqtt_message_received(client, userdata, message):
     logger(message.payload)
     if message.topic == mqtt_subscription_topic:
         try:
-            request = json.loads(message.payload)
+            request = json.loads(message.payload.decode('utf-8'))
         except:
             logger(f"Failed to parse work request")
             return
@@ -144,7 +144,7 @@ def mqtt_message_received(client, userdata, message):
             if "count" not in request.keys():
                 WORK_LIST[mac]['count'] = num_retries
         else:
-            logger("Failed to get mac for requedst")
+            logger("Failed to get mac for request")
             return
 
 def triones(client, work):
