@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# -*- coding: future_fstrings -*-
+
 '''
 Talks to cheapo LED BTLE controllers, typically named Triones
 Requires bluepy from pip or https://github.com/IanHarvey/bluepy
