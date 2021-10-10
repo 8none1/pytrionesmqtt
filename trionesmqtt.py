@@ -238,7 +238,8 @@ def triones(client, work):
     # Let everyone else know that the work is done and they can stop
     logger(f"{mac}    Sending completion message")
     work_complete_msg = json.dumps({"mac":mac, "completed":True})
-    mqtt_client.publish(mqtt_subscription_topic, work_complete_msg)
+    client.publish(mqtt_subscription_topic, work_complete_msg)
+    client.loop()
 
 
         
