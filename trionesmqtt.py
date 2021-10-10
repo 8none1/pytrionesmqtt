@@ -27,7 +27,9 @@ mqtt_server = None
 mqtt_server_ip = "mqtt" # Change to the IP address of your MQTT server.  If you need an MQTT server, look at Mosquitto.
 mqtt_subscription_topic = "triones/control" # Where we will listen for messages to act on.
 mqtt_reporting_topic = "triones/status" # Where we will send status messages
+num_retries = 10
 
+WORK_LIST = {}
 
 # Triones constants
 MAIN_SERVICE         = 0xFFD5 # Service which provides the characteristics 
@@ -124,87 +126,108 @@ def send_mqtt(mqtt_client,value):
     mqtt_client.publish(mqtt_reporting_topic, value)
 
 def mqtt_message_received(client, userdata, message):
+    global WORK_LIST
+    logger("Adding request to queue")
+    logger(message.payload)
     if message.topic == mqtt_subscription_topic:
         try:
-            json_request = json.loads(message.payload)
-            if "mac" in json_request.keys():
-                mac = json_request["mac"]
-                logger(f"{mac}    Received Triones request for device")
-                logger(json.dumps(json_request, indent=4, sort_keys=True))
-            else:
-                logger("Received unhandled request.  Doing nothing.")
-                return False
+            request = json.loads(message.payload)
         except:
-            logger("Failed to parse payload JSON.  Giving up")
-            return False
+            logger(f"Failed to parse work request")
+            return
+        if "mac" in request.keys():
+            mac = request['mac']
+            # If we have work on the queue for a given mac, and we receive another request for the same mac
+            # the we replace the old job with the new one.  Seems fine.  You want the most recent request to
+            # be what happens.
+            WORK_LIST[mac] = request
+            if "count" not in request.keys():
+                WORK_LIST[mac]['count'] = num_retries
+        else:
+            logger("Failed to get mac for requedst")
+            return
 
-        # Set up a connection to the device
-        # These devices seem really picky, they either connect straight away, or not at all. 
-        connected = False
-        for a in range(10):
-            # These lights are super flaky. It seems hard to get a connection a lot of the time.
-            # Some of this is, I expect, because they return invalid error codes which BlueZ
-            # doesn't deal with.  
-            # https://github.com/Depau/consmart-ble-mqtt/blob/master/0001-Workaround-for-non-compliant-BLE-lights.patch
-            # Update: I built a patched Bluez, didn't help.
-            
-            logger(f"{mac}    Connect attempt {a+1}/10")
-            time.sleep(round(random.uniform(1,3),2)) # Offset ourselves from any other instances running
-            try:
-                trione = Peripheral(mac, timeout=5)
-                connected = True
-                logger(f"{mac}    Connected!")
-                break
-            except BTLEDisconnectError:
-                logger(f"{mac}    Failed to connect to device.")
-                time.sleep(round(random.uniform(1,2),2))
-        if connected == False:
-            # We tried, but it ain't happening.
-            logger(f"{mac}    Unable to connect.  Giving up.")
-            message = '{"mac": "'+mac+'", "connect": false}'
-            send_mqtt(client, message)
-            return False
-        # If we get here, it should be connected.  But not for long, the life span of a connection seems very short.
-        trione.withDelegate(DataDelegate(client, mac))
-        service = trione.getServiceByUUID(MAIN_SERVICE)
-        characteristic = service.getCharacteristics(MAIN_CHARACTERISTIC)[0]
-        keys = json_request.keys()
-        if "status" in keys:
-            logger(f"{mac}    Requesting status")
-            characteristic.write(GET_STATUS)
-            trione.waitForNotifications(2)
-        
-        if "power" in keys:
-            power = SET_POWER_ON if json_request["power"] == True else SET_POWER_OFF
-            logger(f"{mac}    Setting power to {json_request['power']}")
-            characteristic.write(power)
+def triones(client, work):
+    if len(work) > 0:
+        message = next(iter(work))
+        message = work[message]
+    else:
+        return
 
-        if "rgb_colour" in keys:
-            r,g,b = json_request["rgb_colour"]
-            if "percentage" in keys:
-                scale_factor = int(json_request["percentage"])/100
-            else:
-                scale_factor = 1
-            colour_message = SET_COLOUR_BASE
-            colour_message[1] = int(r * scale_factor)
-            colour_message[2] = int(g * scale_factor)
-            colour_message[3] = int(b * scale_factor)
-            logger(f"{mac}    Setting colour to ({r},{g},{b})")
-            characteristic.write(colour_message)
+    mac = message['mac']
+    if message['count'] > 0:
+        message['count'] -= 1
+    else:
+        logger(f"{mac}    No more tries left. Removing.")
+        del work[mac]
+        return
+    
+    # Set up a connection to the device
+    # These devices seem really flaky, they either connect straight away, or not at all. 
+    # Some of this is, I expect, because they return invalid error codes which BlueZ
+    # doesn't deal with.  
+    # https://github.com/Depau/consmart-ble-mqtt/blob/master/0001-Workaround-for-non-compliant-BLE-lights.patch
+    # Update: I built a patched Bluez, didn't help.
+    #connected = False
+    logger(f"{mac}    Connect attempts remaining {message['count']}/10")
+    try:
+        trione = Peripheral(mac, timeout=5)
+        connected = True
+        logger(f"{mac}    Connected!")
+    except BTLEDisconnectError:
+        logger(f"{mac}    Failed to connect to device.")
+        return False
+    
+    # If we get here, it should be connected.  But not for long, the life span of a connection seems very short.
+    trione.withDelegate(DataDelegate(client, mac))
+    service = trione.getServiceByUUID(MAIN_SERVICE)
+    characteristic = service.getCharacteristics(MAIN_CHARACTERISTIC)[0]
+    keys = message.keys()
+    
+    if "status" in keys:
+        logger(f"{mac}    Requesting status")
+        characteristic.write(GET_STATUS)
+        client.loop()
+        trione.waitForNotifications(2)
+   
+    if "power" in keys:
+        power = SET_POWER_ON if message["power"] == True else SET_POWER_OFF
+        logger(f"{mac}    Setting power to {message['power']}")
+        characteristic.write(power)
+        client.loop()
+
+    if "rgb_colour" in keys:
+        r,g,b = message["rgb_colour"]
+        if "percentage" in keys:
+            scale_factor = int(message["percentage"])/100
+        else:
+            scale_factor = 1
+        colour_message = SET_COLOUR_BASE
+        colour_message[1] = int(r * scale_factor)
+        colour_message[2] = int(g * scale_factor)
+        colour_message[3] = int(b * scale_factor)
+        logger(f"{mac}    Setting colour to ({r},{g},{b})")
+        characteristic.write(colour_message)
+        client.loop()
         
-        if "mode" in keys:
-            # I guess you need to set a mode and a speed at the same time, and can't set one without the other?
-            # Haven't done any testing on that.
-            mode = json_request["mode"]
-            speed = json_request["speed"]
-            if mode >= 37 and mode <= 56:
-                mode_message = SET_MODE
-                mode_message[1] = mode
-                mode_message[2] = speed
-                logger(f"{mac}    Setting mode {mode} speed {speed}")
-                characteristic.write(mode_message)
-        logger(f"{mac}    Completed conversation with device.  Disconnecting.\n\n\n")
-        trione.disconnect()
+    if "mode" in keys and "speed" in keys:
+        # I guess you need to set a mode and a speed at the same time, and can't set one without the other?
+        # Haven't done any testing on that.
+        mode = message["mode"]
+        speed = message["speed"]
+        if mode >= 37 and mode <= 56:
+            mode_message = SET_MODE
+            mode_message[1] = mode
+            mode_message[2] = speed
+            logger(f"{mac}    Setting mode {mode} speed {speed}")
+            characteristic.write(mode_message)
+        client.loop()
+
+    # We're going to assume that if we got this far then everything worked and we can remove it from the queue.
+
+    logger(f"{mac}    Completed conversation with device.  Disconnecting.\n\n\n")
+    trione.disconnect()
+    del work[mac]
 
 
         
@@ -238,7 +261,9 @@ def server(run_mode=None):
     
     while True:
         try:
-            mqtt_client.loop_forever()
+            mqtt_client.loop()
+            triones(mqtt_client, WORK_LIST)
+
         except KeyboardInterrupt:
             logger("Exiting...")
             mqtt_client.disconnect()
@@ -246,6 +271,8 @@ def server(run_mode=None):
         except BTLEDisconnectError:
             logger("Device has gone away..")
             send_mqtt(mqtt_client, '{"connect":"False"}')
+        except:
+            raise
 
             #raise
             # I read something which suggests that these devices sometimes return data which is invalid
@@ -265,5 +292,5 @@ if len(sys.argv) > 1 and sys.argv[1] == "--scan":
         sys.exit(0)
 
 else:
-    logger("Running in stand-alone server mode")
+    logger("Starting")
     server()
