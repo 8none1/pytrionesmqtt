@@ -128,14 +128,15 @@ def send_mqtt(mqtt_client,value):
 def mqtt_message_received(client, userdata, message):
     global WORK_LIST
     logger("Adding request to queue")
-    logger(message.payload)
+    logger(message.payload.decode('utf-8'))
     if message.topic == mqtt_subscription_topic:
         try:
             request = json.loads(message.payload.decode('utf-8'))
         except:
             logger(f"Failed to parse work request")
             return
-        if "mac" in request.keys():
+        # work_complete_msg = json.dumps({"mac":mac, "completed":True})
+        if "mac" in request.keys() and "completed" not in request.keys():
             mac = request['mac']
             # If we have work on the queue for a given mac, and we receive another request for the same mac
             # the we replace the old job with the new one.  Seems fine.  You want the most recent request to
@@ -143,6 +144,12 @@ def mqtt_message_received(client, userdata, message):
             WORK_LIST[mac] = request
             if "count" not in request.keys():
                 WORK_LIST[mac]['count'] = num_retries
+        elif "mac" in request.keys() and "completed" in request.keys():
+            # Cancel any work we're doing for this one.  Yes, this is racey...
+            if request["completed"] == True and request["mac"] in WORK_LIST.keys():
+                logger(f"{request['mac']}    Cancelling remaining work for device")
+                del WORK_LIST[request["mac"]]
+
         else:
             logger("Failed to get mac for request")
             return
@@ -228,6 +235,10 @@ def triones(client, work):
     logger(f"{mac}    Completed conversation with device.  Disconnecting.\n\n\n")
     trione.disconnect()
     del work[mac]
+    # Let everyone else know that the work is done and they can stop
+    logger(f"{mac}    Sending completion message")
+    work_complete_msg = json.dumps({"mac":mac, "completed":True})
+    mqtt_client.publish(mqtt_subscription_topic, work_complete_msg)
 
 
         
