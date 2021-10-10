@@ -149,7 +149,6 @@ def mqtt_message_received(client, userdata, message):
             if request["completed"] == True and request["mac"] in WORK_LIST.keys():
                 logger(f"{request['mac']}    Cancelling remaining work for device")
                 del WORK_LIST[request["mac"]]
-
         else:
             logger("Failed to get mac for request")
             return
