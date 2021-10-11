@@ -228,13 +228,7 @@ def triones(client, work):
 
     logger(f"{mac}    Completed conversation with device.  Disconnecting.")
     trione.disconnect()
-    try:
-        del work[mac]
-    except KeyError:
-        # Likely the device was connected to by another.  Just carry on.
-        pass
-    except:
-        raise
+    del work[mac]
     # Let everyone else know that the work is done and they can stop
     logger(f"{mac}    Sending completion message")
     work_complete_msg = json.dumps({"mac":mac, "completed":True})

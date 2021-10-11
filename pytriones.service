@@ -1,0 +1,13 @@
+[Unit]
+Description=pytriones to MQTT Server
+
+[Service]
+Type=simple
+ExecStart=/home/pi/pytriones/venv/bin/python3 -u /home/pi/pytriones/pytrionesmqtt/trionesmqtt.py
+RestartSec=100
+Restart=always
+User=pi
+
+[Install]
+WantedBy=multi-user.target
+
