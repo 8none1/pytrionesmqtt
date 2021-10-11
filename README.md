@@ -27,6 +27,7 @@ Based on Madhead's work and poking around we can reach the following conclusions
  - Listens for commands on a topic
  - Issues status updates on a different topic
  - Expects and produces JSON formatted payloads
+ - Supports multiple instances on the same MQTT server.  You can run this script on more than one device and they'll try and share the work.  This is useful for reaching out of the way devices.
 
 ## How to use it
   - Prerequisites
@@ -34,10 +35,11 @@ Based on Madhead's work and poking around we can reach the following conclusions
       - `python3 -m pip install git+https://github.com/IanHarvey/bluepy.git`
     - paho-mqtt
       - `python3 -m pip install paho-mqtt`
+ - Your life might be made easier if you install the above in a venv
  - Configure your MQTT server and topic information
    - The default subscription topic for controlling the lights is `triones/control` and the default reporting topic is `triones/status`.
    - To change this, edit the code.  These are defined right up the top.
- - You will need to know the MAC address of your device.  There is a scanner class included which can help you find your devices.  Simply run: `TODO`
+ - You will need to know the MAC address of your device.  There is a scanner class included which can help you find your devices.  Simply run the script with `--scan`.
  - To get the status of your device send a JSON payload to the control topic:
    - Send to `triones/control` the payload `{"mac":"aa:bb:cc:11:22:33", "status":true}`
    - Receive : `example TODO`
