@@ -33,6 +33,7 @@ Based on Madhead's work and poking around we can reach the following conclusions
   - Prerequisites
     - bluepy https://github.com/IanHarvey/bluepy (Install the version from the master branch, it has some important fixes to the helper c file which make everything better.)
       - `python3 -m pip install git+https://github.com/IanHarvey/bluepy.git`
+      - If you don't want to run as root you need to do: `sudo setcap 'cap_net_raw,cap_net_admin+eip' bluepy-helper` where `bluepy-helper` is the file which is built when you install bluepy from Git.
     - paho-mqtt
       - `python3 -m pip install paho-mqtt`
  - Your life might be made easier if you install the above in a venv
@@ -47,6 +48,12 @@ Based on Madhead's work and poking around we can reach the following conclusions
    - Send to `triones/control` the payload `{"mac":"aa:bb:cc:11:22:33, "rgb": [255,0,0]}`
  - To power on your lights:
    - Send to `triones/control` the payload `{"mac":"aa:bb:cc:11:22:33, "power":true}`
+
+If you are running this on a Pi with Python version 3.5 you will need to import support for f strings in to your venv.
+e.g. `pip install future-fstrings`
+and also insert this as line 2:
+`# -*- coding: future_fstrings -*-`
+
 
 ## Things still to do
  - There is minimal validation on anything
