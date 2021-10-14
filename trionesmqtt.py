@@ -231,7 +231,7 @@ def triones(client, work):
     try:
         del work[mac]
     except KeyError:
-        # Likely the device was connected to by another.  Just carry on.
+        # Likely the device was also serviced by another instance.  Just carry on.
         pass
     except:
         raise
